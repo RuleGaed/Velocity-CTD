@@ -37,6 +37,8 @@ public class MinecraftEncoder extends MessageToByteEncoder<MinecraftPacket> {
 
   private StateRegistry.PacketRegistry.ProtocolRegistry registry;
 
+  private int cachedPacketId = -1;
+
   /**
    * Creates a new {@code MinecraftEncoder} encoding packets for the specified {@code direction}.
    *
@@ -50,7 +52,11 @@ public class MinecraftEncoder extends MessageToByteEncoder<MinecraftPacket> {
 
   @Override
   protected void encode(ChannelHandlerContext ctx, MinecraftPacket msg, ByteBuf out) {
-    int packetId = this.registry.getPacketId(msg);
+    int packetId = this.cachedPacketId;
+    this.cachedPacketId = -1;
+    if (packetId == -1) {
+      packetId = this.registry.getPacketId(msg);
+    }
     ProtocolUtils.writeVarInt(out, packetId);
     msg.encode(out, direction, registry.version);
   }
@@ -58,13 +64,13 @@ public class MinecraftEncoder extends MessageToByteEncoder<MinecraftPacket> {
   @Override
   protected ByteBuf allocateBuffer(ChannelHandlerContext ctx, MinecraftPacket msg,
                                    boolean preferDirect) throws Exception {
+    this.cachedPacketId = this.registry.getPacketId(msg);
     int hint = msg.encodeSizeHint(direction, registry.version);
     if (hint < 0) {
       return super.allocateBuffer(ctx, msg, preferDirect);
     }
 
-    int packetId = this.registry.getPacketId(msg);
-    int totalHint = ProtocolUtils.varIntBytes(packetId) + hint;
+    int totalHint = ProtocolUtils.varIntBytes(this.cachedPacketId) + hint;
     return preferDirect ? ctx.alloc().ioBuffer(totalHint) : ctx.alloc().heapBuffer(totalHint);
   }
 
